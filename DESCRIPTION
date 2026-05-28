@@ -11,3 +11,5 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports: 
     shiny
+URL: https://github.com/clovestay/ggsketch
+BugReports: https://github.com/clovestay/ggsketch/issues
