@@ -25,7 +25,7 @@ Planned features for future versions:
 
 ```r
 # install.packages("remotes")
-remotes::install_github("username/package-name")
+remotes::install_github("clovestay/ggsketch")
 ```
 
 ### Dependencies
