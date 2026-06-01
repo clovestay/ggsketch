@@ -5,6 +5,7 @@ Drag and drop publication-ready figures without leaving your R environment.
 ## Overview
 
 The `ggsketch` package provides a simple drag-and-drop interface for combining plots together, straight from your R environment.
+Compatible plot objects are loaded in automatically when you start up the app--no exporting required!
 
 Some of the current features include:
 * Drag-and-drop functionality
@@ -45,6 +46,12 @@ ggsketch::run_app()
 ```
 Then open the app in your browser--all your compatible objects will load in automatically!
 PDFs generated using `ggsketch` can be downloaded straight from the app, or extracted from `/inst/shinyapp/www/`.
+
+`ggsketch` also comes with an Addin, which you can run from the Addins dropdown in RStudio or assign to a keyboard shortcut:
+```
+Tools > Modify Keyboard Shortcuts... > Filter "Run ggsketch"
+```
+
 
 ## Citation
 If you use `ggsketch` to generate figures in your publication, please consider citing the package:
