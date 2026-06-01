@@ -8,19 +8,19 @@ set_plot_data <- function(caller_env) {
   eligible_names <- obj_names[
     vapply(obj_names, function(x) {
       obj <- get(x, envir = caller_env)
-      inherits(obj, "ggplot")
+      inherits(obj, "ggplot") | inherits(obj, "grob")
     }, logical(1))
   ]
 
   eligible_plots <- lapply(eligible_names, function(x) {
-    get(x, envir = caller_env)
+    obj <- get(x, envir = caller_env)
+    obj
   })
 
   names(eligible_plots) <- eligible_names
 
   .pkg_env$eligible <- eligible_plots
 
-  print(names(.pkg_env$eligible))
 }
 #' @export
 get_plot_data <- function() {
@@ -28,6 +28,36 @@ get_plot_data <- function() {
     .pkg_env$eligible
   )
 }
+
+#' @export
+save_sketch_layout <- function(df) {
+  .pkg_env$saved_layout <- df
+}
+
+#' @export
+get_sketch_layout <- function() {
+  return(.pkg_env$saved_layout)
+}
+
+#' @export
+clear_sketch_layout <- function() {
+  .pkg_env$saved_layout <- NULL
+}
+
+
+#' @export
+toggle_autosave <- function(do.autosave) {
+  .pkg_env$autosave <- do.autosave
+}
+
+#' @export
+fetch_autosave <- function(do.autosave) {
+  if(is.logical(.pkg_env$autosave)) {
+    return(.pkg_env$autosave)
+  }
+  return(T)
+}
+
 #' Run the Shiny application
 #'
 #' @param ... Arguments passed to shiny::runApp()
@@ -45,8 +75,11 @@ run_app <- function(...) {
   }
 
   set_plot_data(parent.frame())
-
-  shiny::runApp(app_dir, ...)
+  shiny::runApp(app_dir, port = 8080)
+  # return(callr::r_bg(function(app_dir) {
+  #   pkgload::load_all(".")
+  #   shiny::runApp(app_dir, port = 8080)
+  # }, args = list(app_dir = app_dir)))
 }
 
 

@@ -4,28 +4,6 @@ library(dplyr)
 library(patchwork)
 library(bslib)
 
-cars = ggplot(mtcars, aes(mpg, wt)) + geom_point()
-irises = ggplot(iris, aes(Sepal.Length, Sepal.Width)) + geom_point()
-cylinders = ggplot(mtcars, aes(factor(cyl))) + geom_bar()
-seatbelts = ggplot(Seatbelts, aes(x = drivers, y = PetrolPrice)) + geom_line()
-accidents = ggplot(Seatbelts %>% data.frame %>% dplyr::mutate(t = 1:nrow(.)), aes(x = t, y = DriversKilled)) + geom_line()
-
-# available.plots <- lapply(ls(envir = .GlobalEnv)[
-#   grepl("ggplot", sapply(ls(.GlobalEnv), function(x) class(get(x, .GlobalEnv))[1]))
-# ], function(pl) {
-#   return(get(pl, .GlobalEnv))
-# })
-# names(available.plots) <- ls(envir = .GlobalEnv)[
-#   grepl("ggplot", sapply(ls(.GlobalEnv), function(x) class(get(x, .GlobalEnv))[1]))
-# ]
-
-example.df = data.frame(
-  id = c("p1", "p2", "p3"),
-  x = c(0,0,1),
-  y = c(0, 1, 1),
-  w = c(2,3,3),
-  h = c(3, 4, 3)
-)
 
 design_from_df <- function(df, add.margins = T) {
 
@@ -49,14 +27,10 @@ build_patchwork <- function(df, available, add.labels=T, add.margins=0) {
   plots.for.layout = available[df$id]
   if(add.labels) {
     plots.for.layout <- lapply(seq_along(df$id), function(i) {
-      ggpubr::annotate_figure(plots.for.layout[[i]],
+      annotate_figure(plots.for.layout[[i]],
                               fig.lab = letters[[i]], fig.lab.face = "bold",
-                              fig.lab.pos = "top.left", fig.lab.size = 24, left = ggpubr::text_grob(" "))
+                              fig.lab.pos = "top.left", fig.lab.size = 24, left = " ")
     })
-    # plots.for.layout = sapply(1:length(df$id),
-    #                           function(i) { return(ggpubr::annotate_figure(plots.for.layout[[i]],
-    #                                                                        fig.lab = letters[[i]], fig.lab.face = "bold",
-    #                                                                        fig.lab.pos = "top.left", fig.lab.size = 24, left = ggpubr::text_grob(" "))) } )
   }
   # print(plots.for.layout[[1]])
   if(add.margins > 0) {
@@ -81,184 +55,29 @@ build_patchwork <- function(df, available, add.labels=T, add.margins=0) {
     wrap_plots(plots.for.layout) + plot_layout(design = design_from_df(df))
   )
 }
-add_plot_labels <- function(plots) {
-
-}
-
-
-build_layout_auto <- function(df, tol = 0.1) {
-
-  h_monotonic = T
-  for(i in 2:nrow(df)) {
-    if(df$h[i] < df$h[i-1]) {
-      h_monotonic = F
-    }
+annotate_figure <- function (p, top = NULL, bottom = NULL, left = NULL, right = NULL,
+                             fig.lab = NULL, fig.lab.pos = c("top.left", "top", "top.right",
+                                                             "bottom.left", "bottom", "bottom.right"), fig.lab.size,
+                             fig.lab.face)
+{
+  fig.lab.pos <- match.arg(fig.lab.pos)
+  annot.args <- list(top = top, bottom = bottom, left = left,
+                     right = right) %>% .compact()
+  lab.args <- list(label = fig.lab, position = fig.lab.pos) %>%
+    .compact()
+  if (!missing(fig.lab.size))
+    lab.args$size <- fig.lab.size
+  if (!missing(fig.lab.face))
+    lab.args$fontface <- fig.lab.face
+  if (!.is_empty(annot.args)) {
+    p <- gridExtra::arrangeGrob(p, top = top, bottom = bottom,
+                                left = left, right = right) %>% as_ggplot()
   }
-
-  if (h_monotonic) {
-    #print(build_layout(df, y_tol = tol, tree_only = T))
-    return(build_layout(df, y_tol = tol))        # row-first
-  } else {
-    #print(build_layout_col(df, x_tol = tol, tree_only = T))
-    return(build_layout_col(df, x_tol = tol))    # column-first
+  if (!is.null(fig.lab)) {
+    p <- cowplot::ggdraw(p) + do.call(cowplot::draw_figure_label,
+                                      lab.args)
   }
-}
-
-build_layout <- function(df, y_tol = 0.1, tree_only=F) {
-
-    df <- df[order(df$y, df$x), ]
-
-    # STEP 1: cluster rows
-    rows <- list()
-    current_row <- list(df[1, ])
-
-    for (i in 2:nrow(df)) {
-      if (abs(df$y[i] - df$y[i-1]) < y_tol) {
-        current_row <- append(current_row, list(df[i, ]))
-      } else {
-        rows <- append(rows, list(current_row))
-        current_row <- list(df[i, ])
-      }
-    }
-    rows <- append(rows, list(current_row))
-
-    # STEP 2: build hierarchy
-    layout <- lapply(rows, function(row) {
-
-      row <- do.call(rbind, row)
-
-      widths <- row$w / sum(row$w)
-
-      if(tree_only) {
-        return(
-          list(
-            plots = available.plots[row$id],
-            ncol = length(widths),
-            align = "h",
-            heights = max(row$h)
-          )
-        )
-      } else {
-        return(
-          list(
-            plots = ggpubr::ggarrange(
-              plotlist = available.plots[row$id],
-              ncol = length(widths), nrow = 1,
-              widths = widths,
-              align = "h"
-            ),
-            heights = max(row$h)
-          )
-        )
-      }
-
-
-    })
-
-    dims <- list(
-      width  = max(df$x + df$w) - min(df$x),
-      height = max(df$y + df$h) - min(df$y)
-    )
-
-    #return(lapply(layout, function(x) x$plots))
-    if(tree_only) {
-      return(
-        list(
-          plots = lapply(layout, function(x) x$plots),
-          nrow = length(rows),
-          align = "v",
-          heights = lapply(layout, function(x) x$heights) %>% unlist
-        )
-      )
-    } else {
-      return(
-        ggpubr::ggarrange(
-          plotlist = lapply(layout, function(x) x$plots),
-          ncol = 1, nrow = length(rows),
-          heights = lapply(layout, function(x) x$heights) %>% unlist,
-          align = "v"
-        )
-      )
-    }
-
-}
-build_layout_col <- function(df, x_tol = 0.1, tree_only=F) {
-
-  df <- df[order(df$x, df$y), ]
-
-  # STEP 1: cluster columns
-  cols <- list()
-  current_col <- list(df[1, ])
-
-  for (i in 2:nrow(df)) {
-    if (abs(df$x[i] - df$x[i-1]) < x_tol) {
-      current_col <- append(current_col, list(df[i, ]))
-    } else {
-      cols <- append(cols, list(current_col))
-      current_col <- list(df[i, ])
-    }
-  }
-  cols <- append(cols, list(current_col))
-
-  # STEP 2: build hierarchy
-  layout <- lapply(cols, function(col) {
-
-    col <- do.call(rbind, col)
-
-    heights <- col$h / sum(col$h)
-
-    # list(
-    #   type = "v",              # vertical stacking inside column
-    #   heights = heights,
-    #   plots = col$id
-    # )
-
-    if(tree_only) {
-      return(
-        list(
-          plots = available.plots[row$id],
-          nrow = length(heights),
-          align = "v",
-          widths = max(col$w)
-        )
-      )
-    } else {
-      return(
-        list(
-          plots = ggpubr::ggarrange(
-            plotlist = available.plots[col$id],
-            nrow = length(heights), ncol = 1,
-            heights = heights,
-            align = "v"
-          ),
-          widths = max(col$w)
-        )
-      )
-    }
-
-
-  })
-
-  if(tree_only) {
-    return(
-      list(
-        plots = lapply(layout, function(x) x$plots),
-        ncol = length(cols),
-        align = "h",
-        widths = lapply(layout, function(x) x$widths) %>% unlist
-      )
-    )
-  } else {
-    return(
-      ggpubr::ggarrange(
-        plotlist = lapply(layout, function(x) x$plots),
-        nrow = 1, ncol = length(cols),
-        widths = lapply(layout, function(x) x$widths) %>% unlist,
-        align = "h"
-      )
-    )
-  }
-
+  p
 }
 
 
@@ -280,8 +99,13 @@ ui <- page_fillable(
     }
   ")),
 
-  titlePanel("ggdesign"),
-
+  titlePanel(
+    div(
+      style = "display:flex; justify-content:space-between; align-items:center;",
+      h2("ggsketch", style = "margin:0;"),
+      actionButton("quit", "Quit App", class = "btn-danger")
+    )
+  ),
 
 
   tags$script(HTML("
@@ -400,6 +224,8 @@ ui <- page_fillable(
         el.setAttribute('gs-id', msg.id);
         el.setAttribute('gs-w', msg.w ?? 4);
         el.setAttribute('gs-h', msg.h ?? 3);
+        el.setAttribute('gs-x', msg.x ?? 1);
+        el.setAttribute('gs-y', msg.y ?? 1);
 
         el.innerHTML = `
           <div class='grid-stack-item-content'>
@@ -473,23 +299,31 @@ ui <- page_fillable(
   ")),
 
   layout_columns(
-        card(
-          card_header(
-            div(
-              class = "d-flex justify-content-between align-items-center w-100",
 
-              span("Environment"),
+      layout_column_wrap(
+          card(
+            card_header(
+              div(
+                class = "d-flex justify-content-between align-items-center w-100",
 
-              actionButton(
-                "refresh_plots",
-                label = NULL,
-                icon = icon("rotate-right"),
-                class = "btn-sm btn-outline-secondary"
+                span("Environment"),
+
+                actionButton(
+                  "refresh_plots",
+                  label = NULL,
+                  icon = icon("rotate-right"),
+                  class = "btn-sm btn-outline-secondary"
+                )
               )
-            )
+            ),
+            uiOutput("buttons")
           ),
-          uiOutput("buttons")
-        ),
+          card(
+            card_header("Settings"),
+            input_switch("settingsAutosave", "Autosave layout", value=ggsketch::fetch_autosave())
+          ),
+          heights_equal = "row", fill = F, fillable = T
+      ),
 
       navset_card_tab(
         id = "editor_tab",
@@ -549,7 +383,7 @@ server <- function(input, output, session) {
     # } else {
     #   temp.available <- eligible[!(names(eligible) %in% current.active)]
     # }
-    print(names(eligible))
+    #print(names(eligible))
     available.plots(temp.available)
   }
 
@@ -591,14 +425,6 @@ server <- function(input, output, session) {
           input$grid_item_click
         ) %>% dplyr::select(-id) %>% t %>% data.frame %>%
           `colnames<-`(c("value")) %>% tibble::rownames_to_column(var="field")
-        # if(!("x" %in% colnames(df))) {
-        #   df$x = 0
-        # }
-        # df$x = as.numeric(df$x)
-        # if(!("y" %in% colnames(df))) {
-        #   df$y = 0
-        # }
-        # df$y = as.numeric(df$y)
         return(df)
       })
       output$properties_id <- renderText(paste0(input$grid_item_click$id[[1]]))
@@ -632,6 +458,7 @@ server <- function(input, output, session) {
     if(!is.null(input$layout_export) & length(active.plots()) > 0) {
       withProgress(message = 'Making plot', value = 0, {
         df = jsonlite::fromJSON(input$layout_export)
+        ggsketch::save_sketch_layout(df)
         incProgress(0.5, detail = "Building layout..")
         layout_auto = build_patchwork(df, available = eligible.plots(),
                                       add.labels = input$renderAddLetterLabels, add.margins = input$renderAddMargins*2)
@@ -658,6 +485,8 @@ server <- function(input, output, session) {
         }
       })
 
+    } else {
+      print(active.plots())
     }
   })
 
@@ -749,6 +578,33 @@ server <- function(input, output, session) {
   # ---------------------------
   # 4. Layout debug
   # ---------------------------
+
+  # load layouts
+  observeEvent(TRUE, {
+    if(input$settingsAutosave) { #input$autoload_layout
+      last_layout <- ggsketch::get_sketch_layout()
+      add.to.active.plots <- c()
+      if(!is.null(last_layout)) {
+        apply(last_layout, MARGIN=1, FUN=function(widget) {
+          if(widget["id"][[1]] %in% names(ggsketch::get_plot_data())) {
+            session$sendCustomMessage("add_widget", widget %>% as.list)
+          }
+        })
+        add.to.active.plots <- last_layout$id[last_layout$id %in% names(ggsketch::get_plot_data())]
+        active.plots(add.to.active.plots)
+        refreshAvailablePlots(add.to.active.plots)
+      }
+    }
+  }, once = TRUE)
+
+  observeEvent(input$settingsAutosave, {
+    ggsketch::toggle_autosave(input$settingsAutosave)
+  }, ignoreInit = T)
+
+  observeEvent(input$quit, {
+    stopApp()
+  })
+
 }
 
 shinyApp(ui, server)
