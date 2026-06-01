@@ -87,6 +87,22 @@ annotate_figure <- function (p, top = NULL, bottom = NULL, left = NULL, right = 
 }
 
 
+getRenderOption <- function(opt, slider=F) {
+  savedOpt = ggsketch:::get_render_options(opt)
+
+  if(slider) {
+    updateSliderInput(inputId = opt, value = savedOpt)
+  } else {
+    return(savedOpt)
+  }
+
+  # if(!is.na(savedOpt)) {
+  #   return(savedOpt)
+  # }
+  # return(
+  #   ggsketch:::default_render_options(opt)
+  # )
+}
 
 ui <- page_fillable(
   theme = bs_theme(bootswatch = "sketchy"),
@@ -110,7 +126,8 @@ ui <- page_fillable(
       style = "display:flex; justify-content:space-between; align-items:center;",
       h2("ggsketch", style = "margin:0;"),
       actionButton("quit", "Quit App", class = "btn-danger")
-    )
+    ),
+    windowTitle = "ggsketch layout"
   ),
 
 
@@ -119,8 +136,7 @@ ui <- page_fillable(
 
       const grid = GridStack.init({
         column: 16,
-        cellHeight: 80,
-        //cellWidth: 80,
+        auto: true,
         margin: 5,
         minRow: 6,
         float: true,
@@ -326,7 +342,7 @@ ui <- page_fillable(
           ),
           card(
             card_header("Settings"),
-            input_switch("settingsAutosave", "Autosave layout", value=ggsketch::fetch_autosave())
+            input_switch("settingsAutosave", "Autosave layout", value=ggsketch:::fetch_autosave())
           ),
           heights_equal = "row", fill = F, fillable = T
       ),
@@ -351,23 +367,22 @@ ui <- page_fillable(
         ),
         card(
           card_header("Render PDF"),
-          input_switch("renderAddLetterLabels", "Add lettered labels", value=T),
-          sliderInput("renderAddMargins", "Add plot margins", min = 0, max = 10, value = 6),
-          sliderInput("renderBaseSize", "Figure scaling", min = 1, max = 8, value = 3),
+          input_switch("renderAddLetterLabels", "Add lettered labels", value = getRenderOption("renderAddLetterLabels")),
+          sliderInput("renderAddMargins", "Add plot margins", min = 0, max = 10, value = getRenderOption("renderAddMargins")),
+          sliderInput("renderBaseSize", "Figure scaling", min = 1, max = 8, value = getRenderOption("renderBaseSize")),
           div(
             class = "d-flex justify-content-between align-items-center w-100",
-            input_switch("renderUseFixedSize", "Fixed size", value=F),
-            numericInput("renderWidth", "Width (mm)", value = NA),
-            numericInput("renderHeight", "Height (mm)", value = NA)
+            input_switch("renderUseFixedSize", "Fixed size", value = getRenderOption("renderUseFixedSize")),
+            numericInput("renderWidth", "Width (mm)", value = getRenderOption("renderWidth"), min = 0),
+            numericInput("renderHeight", "Height (mm)", value = getRenderOption("renderHeight"), min = 0)
           ),
-          uiOutput("renderAll")
+          uiOutput("RenderAll")
         )
       ),
       col_widths=c(2,8,2)
   )
 
 )
-
 
 
 server <- function(input, output, session) {
@@ -380,7 +395,7 @@ server <- function(input, output, session) {
   pdf_url <- reactiveVal("output.pdf")
 
   refreshAvailablePlots <- function(active) {
-    temp.available <- ggsketch::get_plot_data()
+    temp.available <- ggsketch:::get_plot_data()
     eligible <- temp.available
     eligible.plots(eligible)
     temp.available <- temp.available[!(names(temp.available) %in% active)]
@@ -457,11 +472,23 @@ server <- function(input, output, session) {
     if(!is.null(input$layout_export) & length(active.plots()) > 0) {
       withProgress(message = 'Making plot', value = 0, {
         df = jsonlite::fromJSON(input$layout_export)
-        ggsketch::save_sketch_layout(df)
+        ggsketch:::save_sketch_layout(df)
         incProgress(0.5, detail = "Building layout..")
 
-        layout_auto = build_patchwork(df, available = eligible.plots(),
-                                      add.labels = input$renderAddLetterLabels, add.margins = input$renderAddMargins*2)
+        layout_auto <- NULL
+        tryCatch({
+          layout_auto = build_patchwork(df, available = eligible.plots(),
+                                        add.labels = input$renderAddLetterLabels, add.margins = input$renderAddMargins*2)
+        }, error = function(e) {
+          incProgress(0.5, detail = "Failed to render")
+          print(e)
+          showNotification("Error occurred when rendering", type = "error")
+          return(NULL)
+        })
+        if(is.null(layout_auto)) {
+          return(NULL)
+        }
+
         width_mult = 1
         layout_auto_wh = df %>% mutate(xw = x*width_mult + w*width_mult,
                                        yh = y + h)
@@ -535,11 +562,11 @@ server <- function(input, output, session) {
     })
   })
 
-  output$renderAll <- renderUI({
-    actionButton("renderAll", "Render All", width = "100%")
+  output$RenderAll <- renderUI({
+    actionButton("RenderAll", "Render All", width = "100%")
   })
 
-  observeEvent(input$renderAll, {
+  observeEvent(input$RenderAll, {
     session$sendCustomMessage("export_grid", list())
   })
 
@@ -547,12 +574,45 @@ server <- function(input, output, session) {
   # ---------------------------
   # 3. Add widget only (no rendering trigger)
   # ---------------------------
+
+  safe_plot <- function(id) {
+
+    # #first, check if a plot errors:
+    # errorOut <- tryCatch({
+    #   print(eligible.plots()[[id]])
+    #   return(NA)
+    # }, error = function(e) {
+    #   return("Error")
+    # })
+
+    renderPlot({
+      tryCatch({
+        plt <- eligible.plots()[[id]]
+        print(plt)
+      }, error = function(e) {
+        showNotification(sprintf("Error occurred when plotting %s", id), type = "error")
+        ggsketch:::plot_errored(sprintf("Failed to plot %s: %s", id, e$message))
+        ggplot() + geom_blank() + annotate("text", label = sprintf("%s (errored)", id), x = 0, y = 0, size = 10, color = "red") +
+          ggplot2::theme_void()
+      })
+    })
+  }
+
   observeEvent(TRUE, {
     lapply(names(available.plots()), function(id) {
 
-      output[[paste0("plot_", id)]] <- renderPlot({
-        eligible.plots()[[id]]
-      })
+      plot_obj <- tryCatch(plt <- eligible.plots()[[id]], error = function(e) NULL)
+      size_ok <- object.size(plot_obj)
+
+      if(!is.na(size_ok) & size_ok > 2e6) {
+        # big plot -- defer rendering in interactive mode:
+        output[[paste0("plot_", id)]] <- renderPlot({
+          ggplot() + geom_blank() + annotate("text", label = sprintf("%s (Large plot)", id), x = 0, y = 0, size = 10) +
+            ggplot2::theme_void()
+        })
+      } else {
+        output[[paste0("plot_", id)]] <- safe_plot(id)
+      }
 
       observeEvent(input$dragged_in_plot, {
         current <- active.plots()
@@ -576,15 +636,15 @@ server <- function(input, output, session) {
   # load layouts
   observeEvent(TRUE, {
     if(input$settingsAutosave) {
-      last_layout <- ggsketch::get_sketch_layout()
+      last_layout <- ggsketch:::get_sketch_layout()
       add.to.active.plots <- c()
       if(!is.null(last_layout)) {
         apply(last_layout, MARGIN=1, FUN=function(widget) {
-          if(widget["id"][[1]] %in% names(ggsketch::get_plot_data())) {
+          if(widget["id"][[1]] %in% names(ggsketch:::get_plot_data())) {
             session$sendCustomMessage("add_widget", widget %>% as.list)
           }
         })
-        add.to.active.plots <- last_layout$id[last_layout$id %in% names(ggsketch::get_plot_data())]
+        add.to.active.plots <- last_layout$id[last_layout$id %in% names(ggsketch:::get_plot_data())]
         active.plots(add.to.active.plots)
         refreshAvailablePlots(add.to.active.plots)
       }
@@ -592,8 +652,17 @@ server <- function(input, output, session) {
   }, once = TRUE)
 
   observeEvent(input$settingsAutosave, {
-    ggsketch::toggle_autosave(input$settingsAutosave)
+    ggsketch:::toggle_autosave(input$settingsAutosave)
   }, ignoreInit = T)
+
+  # observe all render* settings to autosave:
+  observe({
+    ids <- grep("^render", names(input), value = TRUE)
+
+    values <- lapply(ids, function(id) input[[id]])
+    names(values) <- ids
+    ggsketch:::save_render_options(values)
+  })
 
   observeEvent(input$quit, {
     stopApp()

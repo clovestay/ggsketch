@@ -1,0 +1,4 @@
+Name: Run ggsketch
+Description: Open the ggsketch editor
+Binding: run_app
+Interactive: false

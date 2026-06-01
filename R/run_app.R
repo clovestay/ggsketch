@@ -22,40 +22,69 @@ set_plot_data <- function(caller_env) {
   .pkg_env$eligible <- eligible_plots
 
 }
-#' @export
 get_plot_data <- function() {
   return(
     .pkg_env$eligible
   )
 }
 
-#' @export
 save_sketch_layout <- function(df) {
   .pkg_env$saved_layout <- df
 }
 
-#' @export
 get_sketch_layout <- function() {
   return(.pkg_env$saved_layout)
 }
 
-#' @export
 clear_sketch_layout <- function() {
   .pkg_env$saved_layout <- NULL
 }
 
-
-#' @export
 toggle_autosave <- function(do.autosave) {
   .pkg_env$autosave <- do.autosave
 }
 
-#' @export
 fetch_autosave <- function(do.autosave) {
   if(is.logical(.pkg_env$autosave)) {
     return(.pkg_env$autosave)
   }
   return(T)
+}
+
+
+save_render_options <- function(opts) {
+  .pkg_env$render_options = opts
+}
+get_render_options <- function(opt = NULL) {
+  if(!is.null(opt)) {
+    return(.pkg_env$render_options[[opt]])
+  }
+  return(.pkg_env$render_options)
+}
+default_render_options <- function(opt = NULL) {
+  defs <- list(
+    renderAddLetterLabels = T,
+    renderUseFixedSize = F,
+    renderBaseSize = 3,
+    renderAddMargins = 6,
+    renderWidth = NA,
+    renderHeight = NA
+  )
+  if(!is.null(opt)) {
+    return(
+      defs[[opt]]
+    )
+  }
+  return(defs)
+}
+try_load_options <- function() {
+  if(is.null(.pkg_env$render_options)) {
+    .pkg_env$render_options = default_render_options()
+  }
+}
+
+plot_errored <- function(err) {
+  cli::cli_alert_danger(err)
 }
 
 #' Run the Shiny application
@@ -74,12 +103,10 @@ run_app <- function(...) {
     stop("Could not find app directory")
   }
 
-  set_plot_data(parent.frame())
-  shiny::runApp(app_dir, port = 8080)
-  # return(callr::r_bg(function(app_dir) {
-  #   pkgload::load_all(".")
-  #   shiny::runApp(app_dir, port = 8080)
-  # }, args = list(app_dir = app_dir)))
+  ggsketch:::try_load_options()
+  ggsketch:::set_plot_data(parent.frame())
+  cli::cli_alert_success("Opened app!")
+  shiny::runApp(app_dir, launch.browser = T, quiet = T)
 }
 
 
