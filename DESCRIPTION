@@ -13,6 +13,7 @@ Imports:
     dplyr,
     ggplot2,
     patchwork,
+    rstudioapi,
     shiny
 URL: https://github.com/clovestay/ggsketch
 BugReports: https://github.com/clovestay/ggsketch/issues
