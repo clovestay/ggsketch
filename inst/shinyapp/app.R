@@ -32,7 +32,6 @@ build_patchwork <- function(df, available, add.labels=T, add.margins=0) {
                               fig.lab.pos = "top.left", fig.lab.size = 24, left = " ")
     })
   }
-  # print(plots.for.layout[[1]])
   if(add.margins > 0) {
     plots.for.layout <- lapply(seq_along(df$id), function(i) {
       plots.for.layout[[i]] +
@@ -45,15 +44,22 @@ build_patchwork <- function(df, available, add.labels=T, add.margins=0) {
           )
         )
     })
-    # plots.for.layout = sapply(1:length(df$id),
-    #                           function(i) { return(plots.for.layout[[i]] + ggplot2::theme(plot.margin = margin(t = add.margins, r = add.margins,
-    #                                                                                                   l = add.margins, b = add.margins)))})
   }
   return(
-    # wrap_plots(available.plots[df$id], design = design_from_df(df)) &
-    #   theme(plot.margin = margin(20, 5, 5, 20))
     wrap_plots(plots.for.layout) + plot_layout(design = design_from_df(df))
   )
+}
+as_ggplot <- function (x)
+{
+  null_device <- base::getOption("ggsketch.null_device", default = cowplot::pdf_null_device)
+  cur_dev <- grDevices::dev.cur()
+  null_device(width = 6, height = 6)
+  null_dev <- grDevices::dev.cur()
+  on.exit({
+    grDevices::dev.off(null_dev)
+    if (cur_dev > 1) grDevices::dev.set(cur_dev)
+  })
+  cowplot::ggdraw() + cowplot::draw_grob(grid::grobTree(x))
 }
 annotate_figure <- function (p, top = NULL, bottom = NULL, left = NULL, right = NULL,
                              fig.lab = NULL, fig.lab.pos = c("top.left", "top", "top.right",
@@ -62,14 +68,14 @@ annotate_figure <- function (p, top = NULL, bottom = NULL, left = NULL, right = 
 {
   fig.lab.pos <- match.arg(fig.lab.pos)
   annot.args <- list(top = top, bottom = bottom, left = left,
-                     right = right) %>% .compact()
+                     right = right) %>% purrr::compact()
   lab.args <- list(label = fig.lab, position = fig.lab.pos) %>%
-    .compact()
+    purrr::compact()
   if (!missing(fig.lab.size))
     lab.args$size <- fig.lab.size
   if (!missing(fig.lab.face))
     lab.args$fontface <- fig.lab.face
-  if (!.is_empty(annot.args)) {
+  if (!purrr::is_empty(annot.args)) {
     p <- gridExtra::arrangeGrob(p, top = top, bottom = bottom,
                                 left = left, right = right) %>% as_ggplot()
   }
@@ -348,7 +354,12 @@ ui <- page_fillable(
           input_switch("renderAddLetterLabels", "Add lettered labels", value=T),
           sliderInput("renderAddMargins", "Add plot margins", min = 0, max = 10, value = 6),
           sliderInput("renderBaseSize", "Figure scaling", min = 1, max = 8, value = 3),
-          #numericInput("renderWidth", "Fixed width", value = NA),
+          div(
+            class = "d-flex justify-content-between align-items-center w-100",
+            input_switch("renderUseFixedSize", "Fixed size", value=F),
+            numericInput("renderWidth", "Width (mm)", value = NA),
+            numericInput("renderHeight", "Height (mm)", value = NA)
+          ),
           uiOutput("renderAll")
         )
       ),
@@ -372,18 +383,7 @@ server <- function(input, output, session) {
     temp.available <- ggsketch::get_plot_data()
     eligible <- temp.available
     eligible.plots(eligible)
-    # if(!is.null(add)) {
-    #   #print(paste("old:", current.active, "add:", add))
-    #   #current.active <- setdiff(current.active, add)
-    #   #active.plots(setdiff(current.active, add))
-    # }
     temp.available <- temp.available[!(names(temp.available) %in% active)]
-    #
-    #   print(paste("adding plot back to available", add))
-    # } else {
-    #   temp.available <- eligible[!(names(eligible) %in% current.active)]
-    # }
-    #print(names(eligible))
     available.plots(temp.available)
   }
 
@@ -399,7 +399,6 @@ server <- function(input, output, session) {
 
   observeEvent(input$editor_tab, {
     if (input$editor_tab == "pdf_refresh") {
-      print("refreshing")
       pdf_url(paste0("output.pdf?ts=", Sys.time()))
     }
   })
@@ -460,21 +459,42 @@ server <- function(input, output, session) {
         df = jsonlite::fromJSON(input$layout_export)
         ggsketch::save_sketch_layout(df)
         incProgress(0.5, detail = "Building layout..")
+
         layout_auto = build_patchwork(df, available = eligible.plots(),
                                       add.labels = input$renderAddLetterLabels, add.margins = input$renderAddMargins*2)
         width_mult = 1
         layout_auto_wh = df %>% mutate(xw = x*width_mult + w*width_mult,
                                        yh = y + h)
-        cowplot::save_plot(
-          "www/output.pdf",
-          plot = layout_auto,
-          base_width = max(layout_auto_wh$xw) * ((input$renderBaseSize + 3)/6),
-          base_height = max(layout_auto_wh$yh) * ((input$renderBaseSize + 3)/6),
-        )
+
+        if(input$renderUseFixedSize & !(is.na(input$renderWidth) & is.na(input$renderHeight))) {
+          widthComputed = ifelse(
+            is.na(input$renderWidth), # if not specified,
+            (max(layout_auto_wh$xw) / max(layout_auto_wh$yh)) * input$renderHeight, # compute based on height;
+            input$renderWidth / 25.4 # otherwise, use specified width
+          )
+          heightComputed = ifelse(
+            is.na(input$renderHeight), # if not specified,
+            (max(layout_auto_wh$yh) / max(layout_auto_wh$xw)) * input$renderWidth, # compute based on width;
+            input$renderHeight / 25.4 # otherwise, use specified height
+          )
+          cowplot::save_plot(
+            "www/output.pdf",
+            plot = layout_auto,
+            base_width = widthComputed,
+            base_height = heightComputed
+          )
+        } else {
+          cowplot::save_plot(
+            "www/output.pdf",
+            plot = layout_auto,
+            base_width = max(layout_auto_wh$xw) * ((input$renderBaseSize + 3)/6),
+            base_height = max(layout_auto_wh$yh) * ((input$renderBaseSize + 3)/6),
+          )
+        }
+
         incProgress(0.5, detail = "Rendering PDF..")
         # refresh render tab if loaded:
         if (input$editor_tab == "pdf_refresh") {
-          print("refreshing")
           pdf_url(paste0("output.pdf?ts=", Sys.time()))
         } else {
           updateTabsetPanel(
@@ -486,7 +506,6 @@ server <- function(input, output, session) {
       })
 
     } else {
-      print(active.plots())
     }
   })
 
@@ -524,16 +543,6 @@ server <- function(input, output, session) {
     session$sendCustomMessage("export_grid", list())
   })
 
-  # ---------------------------
-  # 2. PRE-REGISTER ALL PLOTS (CRITICAL FIX)
-  # ---------------------------
-  # lapply(names(available.plots()), function(id) {
-  #
-  #   output[[paste0("plot_", id)]] <- renderPlot({
-  #     available.plots()[[id]]
-  #   })
-  #
-  # })
 
   # ---------------------------
   # 3. Add widget only (no rendering trigger)
@@ -549,24 +558,9 @@ server <- function(input, output, session) {
         current <- active.plots()
         if(!(input$dragged_in_plot$id %in% current)) {
           active.plots(c(current, input$dragged_in_plot$id))
-          print(paste("dragged in", input$dragged_in_plot$id))
           refreshAvailablePlots(active = c(current, input$dragged_in_plot$id))
         }
       })
-
-      # observeEvent(input[[paste0("btn_", id)]], {
-      #
-      #   current <- active.plots()
-      #
-      #   if(id %in% current) {
-      #     session$sendCustomMessage("remove_widget", list(id = id))
-      #     active.plots(setdiff(current, id))
-      #   } else {
-      #     session$sendCustomMessage("add_widget", list(id = id))
-      #     active.plots(c(current, id))
-      #   }
-      #
-      # }, ignoreInit = TRUE)
 
     })
   }, once=T)
@@ -581,7 +575,7 @@ server <- function(input, output, session) {
 
   # load layouts
   observeEvent(TRUE, {
-    if(input$settingsAutosave) { #input$autoload_layout
+    if(input$settingsAutosave) {
       last_layout <- ggsketch::get_sketch_layout()
       add.to.active.plots <- c()
       if(!is.null(last_layout)) {

@@ -1,2 +1,4 @@
+^renv$
+^renv\.lock$
 ^ggsketch\.Rproj$
 ^\.Rproj\.user$
