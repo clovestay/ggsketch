@@ -1,6 +1,6 @@
 # ggsketch: Easy multi-panel figures
 
-Generate publication-ready figures without leaving your R environment.
+Drag and drop publication-ready figures without leaving your R environment.
 
 ## Overview
 
