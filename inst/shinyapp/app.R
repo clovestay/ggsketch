@@ -23,12 +23,19 @@ design_from_df <- function(df, add.margins = T) {
     do.call(c, areas)
 }
 
-build_patchwork <- function(df, available, add.labels=T, add.margins=0) {
+build_patchwork <- function(df, available, add.labels=T, add.margins=0, label.type = "lowercase") {
   plots.for.layout = available[df$id]
   if(add.labels) {
+    label.list = letters
+    if(label.type == "uppercase") {
+      label.list = LETTERS
+    }
+    if(label.type == "numeric") {
+      label.list = 1:length(plots.for.layout)
+    }
     plots.for.layout <- lapply(seq_along(df$id), function(i) {
       annotate_figure(plots.for.layout[[i]],
-                              fig.lab = letters[[i]], fig.lab.face = "bold",
+                              fig.lab = label.list[[i]], fig.lab.face = "bold",
                               fig.lab.pos = "top.left", fig.lab.size = 24, left = " ")
     })
   }
@@ -105,7 +112,7 @@ getRenderOption <- function(opt, slider=F) {
 }
 
 ui <- page_fillable(
-  theme = bs_theme(bootswatch = "sketchy"),
+  theme = bs_theme(bootswatch = "sandstone"),
 
   tags$head(
     tags$link(rel = "stylesheet",
@@ -367,9 +374,17 @@ ui <- page_fillable(
         ),
         card(
           card_header("Render PDF"),
-          input_switch("renderAddLetterLabels", "Add lettered labels", value = getRenderOption("renderAddLetterLabels")),
+          div(
+            class = "d-flex justify-content-between align-items-center w-100",
+            input_switch("renderAddLetterLabels", "Add panel labels", value = getRenderOption("renderAddLetterLabels")),
+            selectInput("renderLabelChoice", "", choices = c(
+              "Nature-style (lowercase)" = "lowercase",
+              "Cell/Science-style (uppercase)" = "uppercase",
+              "Numbered" = "numeric"
+            ), multiple = F, selected = getRenderOption("renderLabelChoice"))
+          ),
           sliderInput("renderAddMargins", "Add plot margins", min = 0, max = 10, value = getRenderOption("renderAddMargins")),
-          sliderInput("renderBaseSize", "Figure scaling", min = 1, max = 8, value = getRenderOption("renderBaseSize")),
+          sliderInput("renderBaseSize", "Figure scaling", min = 1, max = 8, value = getRenderOption("renderBaseSize"), step = 0.25),
           div(
             class = "d-flex justify-content-between align-items-center w-100",
             input_switch("renderUseFixedSize", "Fixed size", value = getRenderOption("renderUseFixedSize")),
@@ -478,7 +493,9 @@ server <- function(input, output, session) {
         layout_auto <- NULL
         tryCatch({
           layout_auto = build_patchwork(df, available = eligible.plots(),
-                                        add.labels = input$renderAddLetterLabels, add.margins = input$renderAddMargins*2)
+                                        add.labels = input$renderAddLetterLabels,
+                                        add.margins = input$renderAddMargins*2,
+                                        label.type = input$renderLabelChoice)
         }, error = function(e) {
           incProgress(0.5, detail = "Failed to render")
           print(e)

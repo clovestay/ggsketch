@@ -64,6 +64,7 @@ get_render_options <- function(opt = NULL) {
 default_render_options <- function(opt = NULL) {
   defs <- list(
     renderAddLetterLabels = T,
+    renderLabelChoice = "lowercase",
     renderUseFixedSize = F,
     renderBaseSize = 3,
     renderAddMargins = 6,
