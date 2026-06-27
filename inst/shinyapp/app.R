@@ -102,13 +102,16 @@ getRenderOption <- function(opt, slider=F) {
   } else {
     return(savedOpt)
   }
+}
 
-  # if(!is.na(savedOpt)) {
-  #   return(savedOpt)
-  # }
-  # return(
-  #   ggsketch:::default_render_options(opt)
-  # )
+getSettingsOption <- function(opt, slider=F) {
+  savedOpt = ggsketch:::get_settings_options(opt)
+
+  if(slider) {
+    updateSliderInput(inputId = opt, value = savedOpt)
+  } else {
+    return(savedOpt)
+  }
 }
 
 ui <- page_fillable(
@@ -142,7 +145,7 @@ ui <- page_fillable(
     document.addEventListener('DOMContentLoaded', function () {
 
       const grid = GridStack.init({
-        column: 16,
+        column: Shiny.shinyapp?.$inputValues['settingsDefaultGridResolution'] ?? 64,
         auto: true,
         margin: 5,
         minRow: 6,
@@ -345,11 +348,36 @@ ui <- page_fillable(
                 )
               )
             ),
+            textInput("searchEnvironment", label = NULL, updateOn = "change", width = "100%", placeholder = "Search..."),
             uiOutput("buttons")
           ),
           card(
             card_header("Settings"),
-            input_switch("settingsAutosave", "Autosave layout", value=ggsketch:::fetch_autosave())
+            input_switch("settingsAutosave", "Autosave layout", value=ggsketch:::fetch_autosave()),
+            div(
+              class = "d-flex justify-content-between align-items-center w-100",
+              input_switch("settingsUseSafeMode", "Safe mode", value = getSettingsOption("settingsUseSafeMode")),
+              tooltip(
+                span(icon("circle-info"), style = "color: #000000; cursor: pointer;"),
+                "Disable automatic rendering in the editor. Helps to avoid accidental freezing due to large plots."
+              )
+            ),
+            div(
+              class = "d-flex justify-content-between align-items-center w-100",
+              numericInput("settingsPlotSize", "Safe plot size (MB)", value = getSettingsOption("settingsPlotSize"), min = 0, updateOn = "blur"),
+              tooltip(
+                span(icon("circle-info"), style = "color: #000000; cursor: pointer;"),
+                "Maximum plot size (in MB) before automatic rendering is disabled. Helps to avoid accidental freezing due to large plots."
+              )
+            ),
+            div(
+              class = "d-flex justify-content-between align-items-center w-100",
+              numericInput("settingsDefaultGridResolution", "Grid resolution", value = getSettingsOption("settingsDefaultGridResolution"), min = 16, max = 128, updateOn = "blur"),
+              tooltip(
+                span(icon("circle-info"), style = "color: #000000; cursor: pointer;"),
+                "Resolution of the grid editor."
+              )
+            )
           ),
           heights_equal = "row", fill = F, fillable = T
       ),
@@ -460,11 +488,27 @@ server <- function(input, output, session) {
       output$properties <- renderUI({
         tagList(
           textOutput("properties_id"),
-          tableOutput("properties_table"),
-          textInput(
-            inputId = "properties_label",
-            label = "Panel label",
-            value = ifelse(!is.na(labels[input$grid_item_click$id]), labels[input$grid_item_click$id], "")
+          div(
+            class = "d-flex justify-content-between align-items-center w-100",
+            span("Align"),
+            actionButton(
+              "alignPlotLeft",
+              label = NULL,
+              icon = icon("align-left"),
+              class = "btn-sm btn-outline-secondary"
+            ),
+            actionButton(
+              "alignPlotCenter",
+              label = NULL,
+              icon = icon("align-center"),
+              class = "btn-sm btn-outline-secondary"
+            ),
+            actionButton(
+              "alignPlotRight",
+              label = NULL,
+              icon = icon("align-right"),
+              class = "btn-sm btn-outline-secondary"
+            ),
           ),
           actionButton("remove_plot_properties", "Remove Plot")
         )
@@ -556,27 +600,61 @@ server <- function(input, output, session) {
   # ---------------------------
   # 1. Buttons
   # ---------------------------
-  output$buttons <- renderUI({
-    lapply(names(available.plots()), function(id) {
-      tagList(
-        div(
-          class = "sidebar-widget grid-stack-item",
-          id = paste0("btn_", id),
-          `gs-id` = id,
-          `gs-w` = 4,
-          `gs-h` = 3,
-          div(
-            class = "grid-stack-item-content d-flex justify-content-between align-items-center w-100 p-4",
-            span(id), icon("grip-vertical")
-          )
-        ),
-        tags$script(HTML("
+
+  observeEvent(input$searchEnvironment, {
+    output$buttons <- renderUI({
+      if(length(names(available.plots()) > 0)) {
+        lapply(names(available.plots())[grepl(input$searchEnvironment, names(available.plots()), ignore.case = T)], function(id) {
+          tagList(
+            div(
+              class = "sidebar-widget grid-stack-item",
+              id = paste0("btn_", id),
+              `gs-id` = id,
+              `gs-w` = 12,
+              `gs-h` = 8,
+              div(
+                class = "grid-stack-item-content d-flex justify-content-between align-items-center w-100 p-4",
+                span(id), icon("grip-vertical")
+              )
+            ),
+            tags$script(HTML("
         setTimeout(function() {
           GridStack.setupDragIn('.sidebar-widget');
         }, 0);
         "))
-      )
+          )
+        })
+      } else {
+        span("No plots found. Add plots to your global environment before starting.")
+      }
     })
+  })
+
+  output$buttons <- renderUI({
+    if(length(names(available.plots()) > 0)) {
+      lapply(names(available.plots()), function(id) {
+        tagList(
+          div(
+            class = "sidebar-widget grid-stack-item",
+            id = paste0("btn_", id),
+            `gs-id` = id,
+            `gs-w` = 12,
+            `gs-h` = 8,
+            div(
+              class = "grid-stack-item-content d-flex justify-content-between align-items-center w-100 p-4",
+              span(id), icon("grip-vertical")
+            )
+          ),
+          tags$script(HTML("
+        setTimeout(function() {
+          GridStack.setupDragIn('.sidebar-widget');
+        }, 0);
+        "))
+        )
+      })
+    } else {
+      span("No plots found. Add plots to your global environment before starting.")
+    }
   })
 
   output$RenderAll <- renderUI({

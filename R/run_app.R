@@ -52,6 +52,35 @@ fetch_autosave <- function(do.autosave) {
 }
 
 
+# Settings options loading ------------------------------------------------
+
+save_settings_options <- function(opts) {
+  .pkg_env$settings_options = opts
+}
+get_settings_options <- function(opt = NULL) {
+  if(!is.null(opt)) {
+    return(.pkg_env$settings_options[[opt]])
+  }
+  return(.pkg_env$settings_options)
+}
+default_settings_options <- function(opt = NULL) {
+  defs <- list(
+    settingsAutosave = T,
+    settingsUseSafeMode = F,
+    settingsPlotSize = 5,
+    settingsDefaultGridResolution = 64
+  )
+  if(!is.null(opt)) {
+    return(
+      defs[[opt]]
+    )
+  }
+  return(defs)
+}
+
+
+# Render options loading --------------------------------------------------
+
 save_render_options <- function(opts) {
   .pkg_env$render_options = opts
 }
@@ -82,6 +111,9 @@ try_load_options <- function() {
   if(is.null(.pkg_env$render_options)) {
     .pkg_env$render_options = default_render_options()
   }
+  if(is.null(.pkg_env$settings_options)) {
+    .pkg_env$settings_options = default_settings_options()
+  }
 }
 
 plot_errored <- function(err) {
@@ -105,6 +137,7 @@ run_app <- function(...) {
   }
 
   ggsketch:::try_load_options()
+
   ggsketch:::set_plot_data(parent.frame())
   cli::cli_alert_success("Opened app!")
   shiny::runApp(app_dir, launch.browser = T, quiet = T)
