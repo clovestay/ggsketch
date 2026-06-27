@@ -115,6 +115,8 @@ getSettingsOption <- function(opt, slider=F) {
 }
 
 ui <- page_fillable(
+
+  shinyjs::useShinyjs(),
   theme = bs_theme(bootswatch = "sandstone"),
 
   tags$head(
@@ -401,7 +403,19 @@ ui <- page_fillable(
           uiOutput("properties")
         ),
         card(
-          card_header("Render PDF"),
+          card_header(
+            div(
+              class = "d-flex justify-content-between align-items-center w-100",
+
+              span(class = "w-50", "Render PDF"),
+
+              selectInput("renderPresets", label = NULL, choices = c(
+                "Manual" = "manual",
+                "Nature wide" = "natureWide",
+                "Nature narrow" = "natureNarrow"
+              ), multiple = F, selected = getRenderOption("renderPresetsChoice"))
+            )
+          ),
           div(
             class = "d-flex justify-content-between align-items-center w-100",
             input_switch("renderAddLetterLabels", "Add panel labels", value = getRenderOption("renderAddLetterLabels")),
@@ -489,26 +503,29 @@ server <- function(input, output, session) {
         tagList(
           textOutput("properties_id"),
           div(
-            class = "d-flex justify-content-between align-items-center w-100",
-            span("Align"),
-            actionButton(
-              "alignPlotLeft",
-              label = NULL,
-              icon = icon("align-left"),
-              class = "btn-sm btn-outline-secondary"
-            ),
-            actionButton(
-              "alignPlotCenter",
-              label = NULL,
-              icon = icon("align-center"),
-              class = "btn-sm btn-outline-secondary"
-            ),
-            actionButton(
-              "alignPlotRight",
-              label = NULL,
-              icon = icon("align-right"),
-              class = "btn-sm btn-outline-secondary"
-            ),
+            class = "d-flex align-items-center w-100",
+            span(style = "margin-right: 20px", "Align"),
+            div(
+              class = "d-flex flex-grow-1 gap-2",
+              actionButton(
+                "alignPlotLeft",
+                label = NULL,
+                icon = icon("align-left"),
+                class = "btn-sm btn-outline-secondary flex-fill"
+              ),
+              actionButton(
+                "alignPlotCenter",
+                label = NULL,
+                icon = icon("align-center"),
+                class = "btn-sm btn-outline-secondary flex-fill"
+              ),
+              actionButton(
+                "alignPlotRight",
+                label = NULL,
+                icon = icon("align-right"),
+                class = "btn-sm btn-outline-secondary flex-fill"
+              )
+            )
           ),
           actionButton("remove_plot_properties", "Remove Plot")
         )
@@ -554,29 +571,51 @@ server <- function(input, output, session) {
         layout_auto_wh = df %>% mutate(xw = x*width_mult + w*width_mult,
                                        yh = y + h)
 
-        if(input$renderUseFixedSize & !(is.na(input$renderWidth) & is.na(input$renderHeight))) {
+        renderWidth = input$renderWidth
+        renderHeight = input$renderHeight
+        useFixedSize = input$renderUseFixedSize
+        renderBaseSize = input$renderBaseSize
+
+        if (input$renderPresets == "natureWide") {
+          renderWidth = 180
+          useFixedSize = T
+        }
+        if (input$renderPresets == "natureNarrow") {
+          renderWidth = 88
+          useFixedSize = T
+        }
+
+        if(useFixedSize & !(is.na(renderHeight) & is.na(renderHeight))) {
           widthComputed = ifelse(
-            is.na(input$renderWidth), # if not specified,
-            (max(layout_auto_wh$xw) / max(layout_auto_wh$yh)) * input$renderHeight, # compute based on height;
-            input$renderWidth / 25.4 # otherwise, use specified width
+            is.na(renderWidth), # if not specified,
+            (max(layout_auto_wh$xw) / max(layout_auto_wh$yh)) * renderHeight, # compute based on height;
+            renderWidth # otherwise, use specified width
           )
           heightComputed = ifelse(
-            is.na(input$renderHeight), # if not specified,
-            (max(layout_auto_wh$yh) / max(layout_auto_wh$xw)) * input$renderWidth, # compute based on width;
-            input$renderHeight / 25.4 # otherwise, use specified height
+            is.na(renderHeight), # if not specified,
+            (max(layout_auto_wh$yh) / max(layout_auto_wh$xw)) * renderWidth, # compute based on width;
+            renderHeight # otherwise, use specified height
           )
-          cowplot::save_plot(
+          ggplot2::ggsave(
             "www/output.pdf",
             plot = layout_auto,
-            base_width = widthComputed,
-            base_height = heightComputed
+            width = widthComputed,
+            height = heightComputed,
+            units = "mm",
+            scale = widthComputed / heightComputed
           )
         } else {
-          cowplot::save_plot(
+
+          renderWidth = max(layout_auto_wh$xw) * renderBaseSize
+          renderHeight = max(layout_auto_wh$yh) * renderBaseSize
+
+          ggplot2::ggsave(
             "www/output.pdf",
             plot = layout_auto,
-            base_width = max(layout_auto_wh$xw) * ((input$renderBaseSize + 3)/6),
-            base_height = max(layout_auto_wh$yh) * ((input$renderBaseSize + 3)/6),
+            width = renderWidth,
+            height = renderHeight,
+            units = "mm",
+            scale = renderWidth / renderHeight
           )
         }
 
@@ -761,6 +800,13 @@ server <- function(input, output, session) {
 
   observeEvent(input$quit, {
     stopApp()
+  })
+
+  observe({
+    lapply(
+      c("renderAddLetterLabels", "renderLabelChoice", "renderAddMargins", "renderBaseSize", "renderUseFixedSize", "renderWidth", "renderHeight"),
+      if (input$renderPresets == "manual") shinyjs::enable else shinyjs::disable
+    )
   })
 
 }
